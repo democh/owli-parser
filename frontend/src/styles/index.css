@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 设计 token：浅色/深色全量覆盖；业务组件不散落十六进制色值。 */
+:root {
+  --owli-surface: 255 255 255;
+  --owli-surface-muted: 246 247 249;
+  --owli-border: 226 229 234;
+  --owli-ink: 23 27 33;
+  --owli-ink-muted: 98 106 117;
+  --owli-brand: 37 99 235;
+  --owli-brand-soft: 224 236 255;
+  --owli-ok: 22 163 74;
+  --owli-warn: 217 119 6;
+  --owli-danger: 220 38 38;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --owli-surface: 24 26 30;
+    --owli-surface-muted: 31 34 39;
+    --owli-border: 55 60 68;
+    --owli-ink: 233 236 240;
+    --owli-ink-muted: 154 161 171;
+    --owli-brand: 96 152 255;
+    --owli-brand-soft: 30 45 76;
+    --owli-ok: 74 222 128;
+    --owli-warn: 251 191 36;
+    --owli-danger: 248 113 113;
+  }
+}
+
+body {
+  @apply bg-surface-muted text-ink font-sans antialiased;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 可访问性：焦点可见、尊重 reduced-motion */
+:focus-visible {
+  outline: 2px solid rgb(var(--owli-brand));
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

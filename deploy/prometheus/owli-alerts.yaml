@@ -1,0 +1,169 @@
+# owli-parser 告警规则（PrometheusRule 兼容）
+#
+# 指标来源：GET /metrics（observability.metrics_enabled=true 时；关闭返回 404）。
+# 阈值依据与排障步骤见 docs/alerts.md；容量类规则依赖 node_exporter。
+groups:
+  - name: owli-parser.pipeline
+    rules:
+      - alert: OwliJobsQueueBacklogWarning
+        expr: owli_jobs_oldest_pending_seconds > 1800
+        for: 10m
+        labels:
+          severity: warning
+          component: parsing
+        annotations:
+          summary: 解析任务排队超过 30 分钟
+          description: >-
+            最老待执行任务已等待 {{ $value | humanizeDuration }}。
+            检查 worker 数量、CPU/GPU 槽位与队列连通性；队列总量见 owli_jobs_pending_total。
+
+      - alert: OwliJobsQueueBacklogCritical
+        expr: owli_jobs_oldest_pending_seconds > 3600
+        for: 5m
+        labels:
+          severity: critical
+          component: parsing
+        annotations:
+          summary: 解析任务排队超过 queue_timeout_seconds（默认 3600s）
+          description: 任务可能在超时前无法被领取，需要扩容或排查 worker 停摆。
+
+      - alert: OwliWorkersNotLeasing
+        expr: owli_jobs_pending_total > 0 and owli_active_leases_total == 0
+        for: 5m
+        labels:
+          severity: warning
+          component: parsing
+        annotations:
+          summary: 有待执行任务但无活跃租约（worker 可能停止）
+          description: >-
+            lease_seconds=120、heartbeat_seconds=30；持续 5 分钟无活跃租约说明
+            worker 未领取或心跳失败。
+
+      - alert: OwliOutboxLagWarning
+        expr: owli_outbox_oldest_pending_seconds > 30
+        for: 5m
+        labels:
+          severity: warning
+          component: outbox
+        annotations:
+          summary: outbox 派发滞后超过 30 秒
+          description: outbox_poll_seconds=2、batch=50；检查 dispatcher 与下游队列。
+
+      - alert: OwliOutboxLagCritical
+        expr: owli_outbox_oldest_pending_seconds > 300
+        for: 5m
+        labels:
+          severity: critical
+          component: outbox
+        annotations:
+          summary: outbox 派发滞后超过 retry_backoff_max_seconds（默认 300s）
+
+  - name: owli-parser.latency
+    rules:
+      - alert: OwliStageP95Slow
+        expr: >-
+          histogram_quantile(
+            0.95,
+            sum by (le, stage) (rate(owli_stage_duration_seconds_bucket[10m]))
+          ) > 600
+        for: 10m
+        labels:
+          severity: warning
+          component: parsing
+        annotations:
+          summary: "{{ $labels.stage }} 阶段 P95 耗时超过 10 分钟"
+          description: 阶段标签为 upload/queue/parsing/normalizing/chunking/indexing/publishing。
+
+      - alert: OwliStageP95ExceedsDeadline
+        expr: >-
+          histogram_quantile(
+            0.95,
+            sum by (le, stage) (rate(owli_stage_duration_seconds_bucket[10m]))
+          ) > 1800
+        for: 5m
+        labels:
+          severity: critical
+          component: parsing
+        annotations:
+          summary: "{{ $labels.stage }} 阶段 P95 超过 stage_deadline_seconds（默认 1800s）"
+
+      - alert: OwliApiP95Slow
+        expr: >-
+          histogram_quantile(
+            0.95,
+            sum by (le, method, status) (rate(owli_http_request_duration_seconds_bucket[5m]))
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "{{ $labels.method }} {{ $labels.status }} API P95 超过 2 秒"
+          description: 结合结构化日志的 trace_id 与路径定位慢请求；状态标签可区分 4xx 与 5xx。
+
+  - name: owli-parser.security
+    rules:
+      - alert: OwliTokenRejectionSpike
+        expr: sum(rate(owli_token_rejected_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: access
+        annotations:
+          summary: Token 拒绝速率超过 6 次/分钟
+          description: >-
+            拒绝原因粗粒度化（reason=invalid|disabled）。检查是否有失效凭据轮换、
+            客户端重试风暴或暴力尝试。
+
+      - alert: OwliTokenRejectionFlood
+        expr: sum(rate(owli_token_rejected_total[5m])) > 1
+        for: 5m
+        labels:
+          severity: critical
+          component: access
+        annotations:
+          summary: Token 拒绝速率超过 60 次/分钟
+
+      - alert: OwliHttp5xxRate
+        expr: >-
+          sum(rate(owli_http_requests_total{status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(owli_http_requests_total[5m])), 0.001)
+          > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: 5xx 响应占比超过 5%
+          description: 结合结构化日志的 trace_id 定位具体请求。
+
+  - name: owli-parser.capacity
+    rules:
+      # 需要 node_exporter（应用自身不采集磁盘水位）。
+      - alert: OwliDiskLow
+        expr: >-
+          node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"}
+          /
+          node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}
+          < 0.15
+        for: 15m
+        labels:
+          severity: warning
+          component: storage
+        annotations:
+          summary: 磁盘可用空间低于 15%
+          description: 解析临时目录与本地存储 profile 共用节点磁盘。
+
+      - alert: OwliDiskCritical
+        expr: >-
+          node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"}
+          /
+          node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}
+          < 0.05
+        for: 5m
+        labels:
+          severity: critical
+          component: storage
+        annotations:
+          summary: 磁盘可用空间低于 5%

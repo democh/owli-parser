@@ -1,0 +1,28 @@
+# 后端镜像构建上下文最小化（上下文为仓库根目录）。
+# 运行镜像只需要 backend 依赖声明、源码、迁移和应用资源。
+.git
+.github
+.gitignore
+.idea
+.vscode
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+backend/.venv
+backend/tests
+frontend
+node_modules
+docs
+contracts
+backups
+coverage
+dist
+*.log
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.*
+kb_parser_delivery_document.md

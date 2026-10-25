@@ -1,0 +1,198 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "owli-parser"
+version = "0.1.0"
+description = "owli-parser: 企业知识库文件解析与知识库工作台"
+readme = "README.md"
+license = { text = "Proprietary" }
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
+    "pydantic>=2.8,<3",
+    "pydantic-settings>=2.4,<3",
+    "sqlalchemy[asyncio]>=2.0.30,<3",
+    "alembic>=1.13,<2",
+    "asyncpg>=0.29,<1",
+    "celery[redis]>=5.4,<6",
+    "httpx>=0.27,<1",
+    "argon2-cffi>=23.1,<26",
+    "cryptography>=43,<47",
+    "pyyaml>=6.0,<7",
+    "python-multipart>=0.0.9,<1",
+    "typer>=0.12,<1",
+    "defusedxml>=0.7,<1",
+]
+
+[project.optional-dependencies]
+cpu = [
+    "pypdf>=4.3,<6",
+    "python-docx>=1.1,<2",
+    "python-pptx>=1.0,<2",
+    "openpyxl>=3.1,<4",
+]
+storage-s3 = ["boto3>=1.34,<2"]
+storage-oss = ["alibabacloud-oss-v2>=1.0.0b1,<2"]
+
+[project.scripts]
+owli = "owli_parser.bootstrap.cli:main"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6,<1",
+    "mypy>=1.11,<2",
+    "pytest>=8.2,<9",
+    "pytest-asyncio>=0.24,<1",
+    "pytest-cov>=5,<8",
+    "import-linter>=2.0,<3",
+    "aiosqlite>=0.20,<1",
+    "types-PyYAML>=6.0",
+    "boto3>=1.34,<2",
+    "alibabacloud-oss-v2>=1.0.0b1,<2",
+    # 契约测试需要生成/读取真实 PDF（转换页数断言）
+    "pypdf>=4.3,<6",
+    "reportlab>=5.0.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/owli_parser"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/owli_parser/resources" = "owli_parser/resources"
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+src = ["src", "tests"]
+# 历史 Alembic 迁移保留生成格式，不参与当前源码 lint/format。
+extend-exclude = ["migrations"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF",
+    "S",     # bandit 类安全检查
+    "ASYNC", # flake8-async
+]
+ignore = [
+    "S101", # assert 允许出现在测试中; 生产代码由 per-file-ignores 收敛
+    "B008", # typer/fastapi 依赖注入默认参数模式
+    "RUF012", # ClassVar 注解不强制
+    "RUF001", "RUF002", "RUF003", # 中英文案与注释使用全角标点，属预期
+    "N818", # 端口错误名（StorageNotFound 等）为设计文档约定的稳定协议名
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "N806"]
+# Alembic 生成/历史迁移不按当前源码风格重排，避免产生无意义的版本差异。
+"migrations/**" = ["E", "F", "I", "N", "UP", "S", "W"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+plugins = ["pydantic.mypy"]
+files = ["src"]
+
+[[tool.mypy.overrides]]
+module = [
+    "celery.*",
+    "alembic.*",
+    "asyncpg.*",
+    "boto3.*",
+    "botocore.*",
+    "alibabacloud_oss_v2.*",
+    "defusedxml.*",
+    "openpyxl.*",
+]
+ignore_missing_imports = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning:celery.*",
+]
+addopts = "-q --strict-markers"
+
+[tool.coverage.run]
+source = ["src/owli_parser"]
+branch = true
+
+[tool.importlinter]
+root_package = "owli_parser"
+
+[[tool.importlinter.contracts]]
+name = "core 与 contracts 不依赖上层"
+type = "forbidden"
+source_modules = ["owli_parser.core", "owli_parser.contracts"]
+forbidden_modules = [
+    "owli_parser.modules",
+    "owli_parser.adapters",
+    "owli_parser.infrastructure",
+    "owli_parser.bootstrap",
+    "owli_parser.workflows",
+]
+
+[[tool.importlinter.contracts]]
+name = "ports 只依赖 core/contracts"
+type = "forbidden"
+source_modules = ["owli_parser.ports"]
+forbidden_modules = [
+    "owli_parser.modules",
+    "owli_parser.adapters",
+    "owli_parser.infrastructure",
+    "owli_parser.bootstrap",
+    "owli_parser.workflows",
+]
+
+[[tool.importlinter.contracts]]
+name = "adapters 不依赖业务模块与 bootstrap"
+type = "forbidden"
+source_modules = ["owli_parser.adapters"]
+forbidden_modules = [
+    "owli_parser.modules",
+    "owli_parser.bootstrap",
+    "owli_parser.workflows",
+]
+
+[[tool.importlinter.contracts]]
+name = "业务模块不依赖 adapters 与 bootstrap"
+type = "forbidden"
+source_modules = ["owli_parser.modules"]
+forbidden_modules = ["owli_parser.adapters", "owli_parser.bootstrap"]
+# 首期窄化豁免（后续里程碑移除）：
+# - bootstrap.settings 承载类型化配置快照，服务层以注入方式消费；
+# - artifacts/ingestion 在 M1 内联构造存储后端与来源加密存储，
+#   计划 M3 前改为纯 ports 注入（StorageRouter 后端工厂化）。
+ignore_imports = [
+  "owli_parser.modules.identity.service -> owli_parser.bootstrap.settings",
+  "owli_parser.modules.access.service -> owli_parser.bootstrap.settings",
+  "owli_parser.modules.artifacts.service -> owli_parser.bootstrap.settings",
+  "owli_parser.modules.ingestion.service -> owli_parser.bootstrap.settings",
+  "owli_parser.modules.knowledge.service -> owli_parser.bootstrap.settings",
+  "owli_parser.modules.knowledge.chunking -> owli_parser.bootstrap.settings",
+  "owli_parser.modules.configuration.service -> owli_parser.bootstrap.settings",
+  "owli_parser.modules.retrieval.service -> owli_parser.bootstrap.settings",
+  "owli_parser.modules.retrieval.indexing -> owli_parser.bootstrap.settings",
+  "owli_parser.modules.artifacts.service -> owli_parser.adapters.storage.local",
+  "owli_parser.modules.artifacts.service -> owli_parser.adapters.storage.s3",
+  "owli_parser.modules.artifacts.service -> owli_parser.adapters.storage.aliyun_oss",
+  "owli_parser.modules.ingestion.service -> owli_parser.adapters.source_secrets",
+]
+
+[[tool.importlinter.contracts]]
+name = "infrastructure 不依赖业务模块与 bootstrap"
+type = "forbidden"
+source_modules = ["owli_parser.infrastructure"]
+forbidden_modules = ["owli_parser.modules", "owli_parser.bootstrap", "owli_parser.workflows"]

@@ -1,0 +1,106 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install backend dependencies
+        run: >-
+          uv sync --project backend --locked
+          --extra cpu --extra storage-s3 --extra storage-oss
+      - name: Ruff
+        run: |
+          uv run --project backend ruff check backend
+          uv run --project backend ruff format --check backend
+      - name: Architecture contracts
+        run: uv run --project backend lint-imports --config backend/pyproject.toml
+      - name: Type check
+        run: uv run --project backend mypy --config-file backend/pyproject.toml backend/src
+      - name: Pytest
+        run: uv run --project backend pytest -c backend/pyproject.toml backend/tests
+      - name: API and schema snapshots
+        run: uv run --project backend owli contracts check
+
+  postgres-migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: owli
+          POSTGRES_PASSWORD: owli
+          POSTGRES_DB: owli
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U owli -d owli"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      OWLI_DATABASE__URL: postgresql+asyncpg://owli:owli@127.0.0.1:5432/owli
+      OWLI_SESSION_PEPPER: ci-session-pepper-0123456789abcdef
+      OWLI_TOKEN_PEPPER: ci-token-pepper-0123456789abcdef
+      OWLI_SOURCE_URL_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install backend dependencies
+        run: uv sync --project backend --locked --extra cpu
+      - name: Upgrade from empty PostgreSQL database
+        run: uv run --project backend owli db upgrade
+      - name: Verify idempotent upgrade
+        run: uv run --project backend owli db upgrade
+      - name: Verify migration head exists
+        run: |
+          uv run --project backend python - <<'PY'
+          import asyncio
+
+          import asyncpg
+
+          async def main() -> None:
+              connection = await asyncpg.connect(
+                  host="127.0.0.1", user="owli", password="owli", database="owli"
+              )
+              version = await connection.fetchval("SELECT version_num FROM alembic_version")
+              await connection.close()
+              assert version, "alembic_version is empty"
+              print(f"migration head: {version}")
+
+          asyncio.run(main())
+          PY
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install frontend dependencies
+        run: pnpm --dir frontend install --frozen-lockfile
+      - name: Typecheck, lint, tests and build
+        run: pnpm --dir frontend check

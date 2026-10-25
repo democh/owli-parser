@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.import_linter_cache/
+.coverage
+htmlcov/
+backend/*.db
+backend/owli_dev.db
+
+# 密钥与本地配置（绝不提交）
+.env
+.env.*
+*.pem
+*.key
+config/local*.yaml
+secrets/
+
+# 运行数据
+data/
+backend/data/
+.DS_Store
+
+# 前端
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+
+# 编辑器
+.idea/
+.vscode/

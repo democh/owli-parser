@@ -1,0 +1,4 @@
+# pnpm 11 设置入口。
+# allowBuilds：明确信任需要执行 postinstall 的依赖（esbuild 为 Vite/Vitest 必需）。
+allowBuilds:
+  esbuild: true

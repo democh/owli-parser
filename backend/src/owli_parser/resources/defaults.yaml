@@ -1,0 +1,186 @@
+# owli-parser 启动配置默认值（无密钥）。
+# 优先级：init > OWLI_ 环境变量 > OWLI_CONFIG_FILE 覆盖 YAML > 本文件默认值。
+# 所有可调参数集中于此；业务代码只消费类型化快照，禁止散落硬编码。
+# 密钥不进入本文件：secret 只写引用（env:/file:/vault: 等），由 SecretResolver 解析。
+schema_version: "1.0"
+
+app:
+  name: owli-parser
+  environment: development # development | staging | production
+  bind_host: 127.0.0.1
+  bind_port: 8000
+  public_base_url: http://127.0.0.1:8000
+
+http:
+  cors_allowed_origins: [] # 空表示同源反向代理部署（生产默认）
+  trusted_proxies: []
+  request_timeout_seconds: 120
+
+database:
+  # 生产基线为 PostgreSQL + asyncpg；本地开发可用 sqlite+aiosqlite。
+  url: "sqlite+aiosqlite:///./owli_dev.db"
+  pool_size: 10
+  max_overflow: 20
+  pool_timeout_seconds: 30
+  pool_recycle_seconds: 1800
+  statement_timeout_ms: 15000
+
+broker:
+  # Valkey（BSD-3-Clause）作为 Celery broker；PG 才是状态权威。
+  url: "redis://127.0.0.1:6379/0"
+  visibility_timeout_seconds: 3600
+  socket_timeout_seconds: 5
+  worker_prefetch_multiplier: 1
+
+auth:
+  session:
+    cookie_name: owli_session
+    idle_ttl_seconds: 86400
+    absolute_ttl_seconds: 604800
+    cookie_secure: true
+    cookie_samesite: lax
+  password:
+    min_length: 12
+    max_length: 256
+  login_rate_limit:
+    max_attempts: 10
+    window_seconds: 300
+  session_pepper_ref: "env:OWLI_SESSION_PEPPER"
+  csrf_header_name: x-owli-csrf
+  ws_ticket_ttl_seconds: 60
+
+tokens:
+  # 外部应用 Token：必填到期时间，不签发永不过期 Token。
+  ttl_default_seconds: 7776000 # 90 天
+  ttl_max_seconds: 31536000 # 365 天
+  rotation_overlap_seconds: 86400
+  pepper_ref: "env:OWLI_TOKEN_PEPPER"
+  prefix: "owli_pat"
+
+upload:
+  direct_max_bytes: 104857600 # 100 MiB
+  total_max_bytes: 1073741824 # 1 GiB
+  part_size_bytes: 8388608 # 8 MiB
+  part_max_count: 10000
+  session_ttl_seconds: 86400
+  temp_file_ttl_seconds: 86400
+
+imports:
+  max_redirects: 3
+  connect_timeout_seconds: 10
+  read_timeout_seconds: 30
+  total_timeout_seconds: 600
+  stalled_timeout_seconds: 60
+  max_download_bytes: 1073741824
+  max_decompressed_bytes: 2147483648
+  allowed_ports: [80, 443]
+  allowed_schemes: [http, https]
+  parallel_downloads: 2
+  retryable_status_codes: [408, 425, 429, 500, 502, 503, 504]
+  # 按用途区分的独立策略：文件下载 / 存储 / 模型推理互不共享 allowlist。
+  mime_allowlist: [] # 空表示不做 MIME 白名单限制，仅做 magic 校验与大小限制
+  # 预签名 URL 的 query 可能等价于密码：完整 URL 加密保存，仅经 SecretResolver 取密钥
+  url_secret_key_ref: "env:OWLI_SOURCE_URL_KEY"
+  temp_dir_ref: "local:imports"
+
+network:
+  mode: offline # offline | hybrid；offline 禁止公网，允许明确批准的内网服务
+  allow_private_networks: false # 获准内网源使用独立受控策略，不允许全局放开
+  internal_allowlist: [] # 例：["files.internal.example.org:443"]
+  proxy_url: null
+  tls_ca_bundle: null
+
+jobs:
+  queues:
+    route: q.route
+    cpu: q.cpu
+    gpu: q.gpu
+    post: q.post
+    dlq: q.dlq
+  max_attempts: 3
+  lease_seconds: 120
+  heartbeat_seconds: 30
+  stage_deadline_seconds: 1800
+  queue_timeout_seconds: 3600
+  retry_backoff_seconds: 5
+  retry_backoff_max_seconds: 300
+  cpu_slots: 4
+  gpu_slots: 0
+  page_range_size: 50
+  page_range_overlap: 1
+  ocr_dpi: 200
+  partial_publish_min_coverage: 0.6
+  outbox_poll_seconds: 2
+  outbox_batch_size: 50
+  lease_sweep_seconds: 30
+
+parsing:
+  default_pipeline: default
+  max_html_bytes: 2097152
+  archive_max_entries: 1000
+  archive_max_depth: 3
+  archive_max_ratio: 100
+  safe_text_encoding: utf-8
+  adapter_heartbeat_ttl_seconds: 90
+
+chunk:
+  tokenizer_ref: "approx:chars4-v1"
+  target_tokens: 400
+  max_tokens: 800
+  overlap_tokens: 50
+  parent_max_tokens: 2000
+  table_row_group_target_tokens: 300
+
+retrieval:
+  enabled: false # retrieval profile 启用后为 true
+  per_channel_limit: 50
+  candidate_limit: 100
+  top_k: 10
+  rrf_k: 60
+  channel_weights:
+    dense: 1.0
+    lexical: 1.0
+  rerank_model_ref: null
+  min_relevance_threshold: 0.0
+
+storage:
+  default_profile_ref: local-primary
+  presign_ttl_seconds: 300
+  proxy_download_default: true
+  local:
+    roots:
+      - id: local-primary-root
+        path: ./data/artifacts
+        quota_bytes: null
+
+models:
+  request_timeout_seconds: 120
+  connect_timeout_seconds: 10
+  max_concurrent_calls: 4
+  default_generation_profile_ref: null
+  default_embedding_profile_ref: null
+  default_rerank_profile_ref: null
+  default_vision_profile_ref: null
+
+retention:
+  orphan_artifact_ttl_seconds: 86400
+  upload_session_ttl_seconds: 86400
+  job_event_retention_days: 30
+  audit_retention_days: 365
+  idempotency_retention_seconds: 604800
+  cleanup_batch_size: 500
+  disk_low_watermark_ratio: 0.1
+  deleted_document_retention_days: 30
+  gc_interval_seconds: 3600
+
+observability:
+  log_level: INFO
+  log_json: true
+  metrics_enabled: true
+  trace_sample_ratio: 1.0
+
+ui:
+  page_size: 50
+  list_max_limit: 200
+  job_poll_interval_seconds: 5
+  ws_reconnect_max_seconds: 30

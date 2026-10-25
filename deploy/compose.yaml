@@ -1,0 +1,111 @@
+# owli-parser Docker Compose（Linux 生产基线）。
+# profiles：
+#   base      —— PostgreSQL + Valkey + migrate + api + worker + scheduler（默认）
+#   retrieval —— 追加 OpenSearch + Qdrant（M3 检索接入后启用）
+# 密钥不进入本文件：通过 .env / 外部 secret 注入 OWLI_ 环境变量。
+name: owli-parser
+
+x-app-env: &app-env
+  OWLI_APP__ENVIRONMENT: production
+  OWLI_DATABASE__URL: postgresql+asyncpg://owli:${POSTGRES_PASSWORD:?required}@postgres:5432/owli
+  OWLI_BROKER__URL: redis://valkey:6379/0
+  OWLI_NETWORK__MODE: ${OWLI_NETWORK_MODE:-offline}
+  OWLI_STORAGE__LOCAL__ROOTS: '[{"id":"local-primary-root","path":"/data/artifacts"}]'
+  OWLI_SESSION_PEPPER: ${OWLI_SESSION_PEPPER:?required}
+  OWLI_TOKEN_PEPPER: ${OWLI_TOKEN_PEPPER:?required}
+  OWLI_SOURCE_URL_KEY: ${OWLI_SOURCE_URL_KEY:?required}
+
+x-app-build: &app-build
+  build:
+    context: ..
+    dockerfile: deploy/backend.Dockerfile
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: owli
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: owli
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U owli -d owli"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    profiles: [base, retrieval]
+
+  valkey:
+    # Valkey（BSD-3-Clause）作为 Celery broker；PG 是状态权威
+    image: valkey/valkey:8
+    command: ["valkey-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    profiles: [base, retrieval]
+
+  migrate:
+    <<: *app-build
+    command: ["uv", "run", "--no-sync", "owli", "db", "upgrade"]
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    profiles: [base, retrieval]
+
+  api:
+    <<: *app-build
+    command: ["uv", "run", "--no-sync", "owli", "serve"]
+    environment: *app-env
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - artifacts:/data/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    profiles: [base, retrieval]
+
+  worker:
+    <<: *app-build
+    command: ["uv", "run", "--no-sync", "owli", "worker", "--pool", "cpu"]
+    environment: *app-env
+    volumes:
+      - artifacts:/data/artifacts
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+    # 解析沙箱边界：限制资源与文件数（文档 §16）
+    security_opt: ["no-new-privileges:true"]
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 4g
+    profiles: [base, retrieval]
+
+  scheduler:
+    <<: *app-build
+    command: ["uv", "run", "--no-sync", "owli", "scheduler"]
+    environment: *app-env
+    volumes:
+      - artifacts:/data/artifacts
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+    profiles: [base, retrieval]
+
+volumes:
+  pgdata: {}
+  artifacts: {}

@@ -1,0 +1,58 @@
+# 默认解析流水线（内置分支均为已安装并通过能力校验的实现）。
+# - first_success 是优先降级；损坏/加密输入、权限或策略拒绝不得绕过限制继续。
+# - 未安装的增强分支（OCR/VLM/ASR/复杂 PDF）在对应里程碑与许可准入后追加，
+#   不允许在默认配置中引用未注册 adapter。
+schema_version: "1.0"
+name: default
+revision: 1
+pipelines:
+  # 数字 PDF：文本层覆盖率足够时直接提取；扫描件在 M2 启用 OCR 合成分支。
+  pdf:
+    mode: first_success
+    candidates:
+      - adapter: pdf-text-local
+        when: { text_layer_ratio: { gte: 0.5 } }
+  text:
+    mode: first_success
+    candidates:
+      - adapter: text-local
+  markdown:
+    mode: first_success
+    candidates:
+      - adapter: text-local
+  csv:
+    mode: first_success
+    candidates:
+      - adapter: text-local
+  docx:
+    mode: first_success
+    candidates:
+      - adapter: docx-local
+  pptx:
+    mode: first_success
+    candidates:
+      - adapter: pptx-local
+  xlsx:
+    mode: first_success
+    candidates:
+      - adapter: xlsx-local
+  # ZIP：仅抽取文本类条目（嵌套受 depth/ratio/entries 限制；二进制条目记 warning）
+  zip:
+    mode: first_success
+    candidates:
+      - adapter: zip-local
+  # Jupyter：按单元格抽取 markdown/code/raw（输出与图片不入正文）
+  jupyter:
+    mode: first_success
+    candidates:
+      - adapter: jupyter-local
+  # EPUB：按 OPF spine 顺序抽取 XHTML 章节（标题层级进入 heading_path）
+  epub:
+    mode: first_success
+    candidates:
+      - adapter: epub-local
+  # EML：主题/头信息/正文；附件只记 warning（不解析二进制附件）
+  email:
+    mode: first_success
+    candidates:
+      - adapter: email-local

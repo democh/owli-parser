@@ -1,0 +1,1254 @@
+{
+  "$defs": {
+    "ArtifactSourceRef": {
+      "additionalProperties": false,
+      "description": "显式文件级降级来源；不能伪造页坐标。",
+      "properties": {
+        "artifact_id": {
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "artifact",
+          "default": "artifact",
+          "title": "Kind",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "reason"
+      ],
+      "title": "ArtifactSourceRef",
+      "type": "object"
+    },
+    "AttachmentSourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "child_artifact_id": {
+          "title": "Child Artifact Id",
+          "type": "string"
+        },
+        "entry_id": {
+          "title": "Entry Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "attachment",
+          "default": "attachment",
+          "title": "Kind",
+          "type": "string"
+        },
+        "parent_artifact_id": {
+          "title": "Parent Artifact Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "parent_artifact_id",
+        "entry_id",
+        "child_artifact_id"
+      ],
+      "title": "AttachmentSourceRef",
+      "type": "object"
+    },
+    "AudioSegPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "end_ms": {
+          "minimum": 0,
+          "title": "End Ms",
+          "type": "integer"
+        },
+        "payload_type": {
+          "const": "audio_seg",
+          "default": "audio_seg",
+          "title": "Payload Type",
+          "type": "string"
+        },
+        "speaker": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Speaker"
+        },
+        "start_ms": {
+          "minimum": 0,
+          "title": "Start Ms",
+          "type": "integer"
+        },
+        "track_id": {
+          "title": "Track Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "track_id",
+        "start_ms",
+        "end_ms"
+      ],
+      "title": "AudioSegPayload",
+      "type": "object"
+    },
+    "BBox": {
+      "additionalProperties": false,
+      "description": "归一化边界框：0≤x0<x1≤1、0≤y0<y1≤1。",
+      "properties": {
+        "x0": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "X0",
+          "type": "number"
+        },
+        "x1": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "X1",
+          "type": "number"
+        },
+        "y0": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Y0",
+          "type": "number"
+        },
+        "y1": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Y1",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x0",
+        "y0",
+        "x1",
+        "y1"
+      ],
+      "title": "BBox",
+      "type": "object"
+    },
+    "Block": {
+      "additionalProperties": false,
+      "properties": {
+        "acl_ref": {
+          "title": "Acl Ref",
+          "type": "string"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Confidence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "lang": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lang"
+        },
+        "order": {
+          "minimum": 0,
+          "title": "Order",
+          "type": "integer"
+        },
+        "parent_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Id"
+        },
+        "payload": {
+          "discriminator": {
+            "mapping": {
+              "audio_seg": "#/$defs/AudioSegPayload",
+              "figure_desc": "#/$defs/FigureDescPayload",
+              "formula": "#/$defs/FormulaPayload",
+              "image": "#/$defs/ImagePayload",
+              "table": "#/$defs/TablePayload",
+              "text": "#/$defs/TextPayload",
+              "video_frame": "#/$defs/VideoFramePayload"
+            },
+            "propertyName": "payload_type"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/TextPayload"
+            },
+            {
+              "$ref": "#/$defs/TablePayload"
+            },
+            {
+              "$ref": "#/$defs/FormulaPayload"
+            },
+            {
+              "$ref": "#/$defs/ImagePayload"
+            },
+            {
+              "$ref": "#/$defs/FigureDescPayload"
+            },
+            {
+              "$ref": "#/$defs/AudioSegPayload"
+            },
+            {
+              "$ref": "#/$defs/VideoFramePayload"
+            }
+          ],
+          "title": "Payload"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "source_refs": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "artifact": "#/$defs/ArtifactSourceRef",
+                "attachment": "#/$defs/AttachmentSourceRef",
+                "media_span": "#/$defs/MediaSpanSourceRef",
+                "page_region": "#/$defs/PageRegionSourceRef",
+                "table_region": "#/$defs/TableRegionSourceRef",
+                "text_span": "#/$defs/TextSpanSourceRef"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/PageRegionSourceRef"
+              },
+              {
+                "$ref": "#/$defs/TextSpanSourceRef"
+              },
+              {
+                "$ref": "#/$defs/TableRegionSourceRef"
+              },
+              {
+                "$ref": "#/$defs/MediaSpanSourceRef"
+              },
+              {
+                "$ref": "#/$defs/AttachmentSourceRef"
+              },
+              {
+                "$ref": "#/$defs/ArtifactSourceRef"
+              }
+            ]
+          },
+          "minItems": 1,
+          "title": "Source Refs",
+          "type": "array"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "text",
+            "heading",
+            "table",
+            "formula",
+            "image",
+            "figure_desc",
+            "audio_seg",
+            "video_frame",
+            "list",
+            "page_header",
+            "page_footer",
+            "footnote",
+            "code"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "order",
+        "text",
+        "source_refs",
+        "payload",
+        "provenance",
+        "acl_ref"
+      ],
+      "title": "Block",
+      "type": "object"
+    },
+    "Confidence": {
+      "additionalProperties": false,
+      "properties": {
+        "calibration_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Calibration Revision"
+        },
+        "method": {
+          "title": "Method",
+          "type": "string"
+        },
+        "normalized_score": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Normalized Score"
+        },
+        "raw_score": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Raw Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "raw_score",
+        "method"
+      ],
+      "title": "Confidence",
+      "type": "object"
+    },
+    "CoverageReport": {
+      "additionalProperties": false,
+      "description": "coverage = 成功工作单元 / 预检确认的总工作单元。\n\nPDF 按页、媒体按时长加权；不得以解析后才知道的 block 数为分母。",
+      "properties": {
+        "failed_duration_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Failed Duration Ms"
+        },
+        "failed_units": {
+          "minimum": 0,
+          "title": "Failed Units",
+          "type": "integer"
+        },
+        "missing_units": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Missing Units",
+          "type": "array"
+        },
+        "succeeded_units": {
+          "minimum": 0,
+          "title": "Succeeded Units",
+          "type": "integer"
+        },
+        "total_duration_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Duration Ms"
+        },
+        "total_units": {
+          "minimum": 0,
+          "title": "Total Units",
+          "type": "integer"
+        },
+        "unit_kind": {
+          "enum": [
+            "page",
+            "time_window",
+            "document"
+          ],
+          "title": "Unit Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "unit_kind",
+        "total_units",
+        "succeeded_units",
+        "failed_units"
+      ],
+      "title": "CoverageReport",
+      "type": "object"
+    },
+    "FigureDescPayload": {
+      "additionalProperties": false,
+      "description": "VLM/模型生成的图片描述：必须带派生声明与模型 revision。",
+      "properties": {
+        "derived": {
+          "default": true,
+          "title": "Derived",
+          "type": "boolean"
+        },
+        "image_artifact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Artifact Id"
+        },
+        "input_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Input Refs",
+          "type": "array"
+        },
+        "model_revision": {
+          "title": "Model Revision",
+          "type": "string"
+        },
+        "payload_type": {
+          "const": "figure_desc",
+          "default": "figure_desc",
+          "title": "Payload Type",
+          "type": "string"
+        },
+        "prompt_revision": {
+          "title": "Prompt Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "model_revision",
+        "prompt_revision"
+      ],
+      "title": "FigureDescPayload",
+      "type": "object"
+    },
+    "FormulaPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence Note"
+        },
+        "latex": {
+          "title": "Latex",
+          "type": "string"
+        },
+        "payload_type": {
+          "const": "formula",
+          "default": "formula",
+          "title": "Payload Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "latex"
+      ],
+      "title": "FormulaPayload",
+      "type": "object"
+    },
+    "ImagePayload": {
+      "additionalProperties": false,
+      "properties": {
+        "caption": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Caption"
+        },
+        "height": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Height"
+        },
+        "image_artifact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Artifact Id"
+        },
+        "payload_type": {
+          "const": "image",
+          "default": "image",
+          "title": "Payload Type",
+          "type": "string"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Width"
+        }
+      },
+      "title": "ImagePayload",
+      "type": "object"
+    },
+    "MediaSpanSourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "end_ms": {
+          "minimum": 0,
+          "title": "End Ms",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "media_span",
+          "default": "media_span",
+          "title": "Kind",
+          "type": "string"
+        },
+        "start_ms": {
+          "minimum": 0,
+          "title": "Start Ms",
+          "type": "integer"
+        },
+        "timebase_revision": {
+          "title": "Timebase Revision",
+          "type": "string"
+        },
+        "track_id": {
+          "title": "Track Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "track_id",
+        "start_ms",
+        "end_ms",
+        "timebase_revision"
+      ],
+      "title": "MediaSpanSourceRef",
+      "type": "object"
+    },
+    "PageGeometry": {
+      "additionalProperties": false,
+      "properties": {
+        "coordinate_transform": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "转换产物的显式坐标变换参数；已归一化视觉坐标不得重复应用旋转",
+          "title": "Coordinate Transform"
+        },
+        "crop_box": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BBox"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "geometry_id": {
+          "title": "Geometry Id",
+          "type": "string"
+        },
+        "height": {
+          "exclusiveMinimum": 0,
+          "title": "Height",
+          "type": "number"
+        },
+        "page_index": {
+          "minimum": 0,
+          "title": "Page Index",
+          "type": "integer"
+        },
+        "rotation": {
+          "default": 0,
+          "enum": [
+            0,
+            90,
+            180,
+            270
+          ],
+          "title": "Rotation",
+          "type": "integer"
+        },
+        "width": {
+          "exclusiveMinimum": 0,
+          "title": "Width",
+          "type": "number"
+        },
+        "width_unit": {
+          "default": "pt",
+          "enum": [
+            "pt",
+            "px"
+          ],
+          "title": "Width Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "page_index",
+        "geometry_id",
+        "width",
+        "height"
+      ],
+      "title": "PageGeometry",
+      "type": "object"
+    },
+    "PageRegionSourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "bbox": {
+          "$ref": "#/$defs/BBox"
+        },
+        "geometry_id": {
+          "title": "Geometry Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "page_region",
+          "default": "page_region",
+          "title": "Kind",
+          "type": "string"
+        },
+        "page_index": {
+          "minimum": 0,
+          "title": "Page Index",
+          "type": "integer"
+        },
+        "polygon": {
+          "anyOf": [
+            {
+              "items": {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Polygon"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "page_index",
+        "geometry_id",
+        "bbox"
+      ],
+      "title": "PageRegionSourceRef",
+      "type": "object"
+    },
+    "Provenance": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_mode": {
+          "enum": [
+            "local",
+            "remote",
+            "composite"
+          ],
+          "title": "Adapter Mode",
+          "type": "string"
+        },
+        "adapter_name": {
+          "title": "Adapter Name",
+          "type": "string"
+        },
+        "adapter_version": {
+          "title": "Adapter Version",
+          "type": "string"
+        },
+        "engine": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine"
+        },
+        "generated_by_model": {
+          "default": false,
+          "title": "Generated By Model",
+          "type": "boolean"
+        },
+        "model_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Revision"
+        },
+        "prompt_revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Revision"
+        }
+      },
+      "required": [
+        "adapter_name",
+        "adapter_version",
+        "adapter_mode"
+      ],
+      "title": "Provenance",
+      "type": "object"
+    },
+    "QualityReport": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm_revision": {
+          "title": "Algorithm Revision",
+          "type": "string"
+        },
+        "metrics": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Metrics",
+          "type": "object"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "required": [
+        "algorithm_revision"
+      ],
+      "title": "QualityReport",
+      "type": "object"
+    },
+    "TableCell": {
+      "additionalProperties": false,
+      "properties": {
+        "col_span": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Col Span",
+          "type": "integer"
+        },
+        "is_header": {
+          "default": false,
+          "title": "Is Header",
+          "type": "boolean"
+        },
+        "row_span": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Row Span",
+          "type": "integer"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "TableCell",
+      "type": "object"
+    },
+    "TablePayload": {
+      "additionalProperties": false,
+      "description": "表格结构真值；table_html 仅为派生展示，不替代结构。",
+      "properties": {
+        "caption": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Caption"
+        },
+        "header_row_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Header Row Count",
+          "type": "integer"
+        },
+        "payload_type": {
+          "const": "table",
+          "default": "table",
+          "title": "Payload Type",
+          "type": "string"
+        },
+        "rows": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/TableCell"
+            },
+            "type": "array"
+          },
+          "title": "Rows",
+          "type": "array"
+        },
+        "table_html": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Table Html"
+        }
+      },
+      "title": "TablePayload",
+      "type": "object"
+    },
+    "TableRegionSourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "col_end": {
+          "minimum": 0,
+          "title": "Col End",
+          "type": "integer"
+        },
+        "col_start": {
+          "minimum": 0,
+          "title": "Col Start",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "table_region",
+          "default": "table_region",
+          "title": "Kind",
+          "type": "string"
+        },
+        "row_end": {
+          "minimum": 0,
+          "title": "Row End",
+          "type": "integer"
+        },
+        "row_start": {
+          "minimum": 0,
+          "title": "Row Start",
+          "type": "integer"
+        },
+        "sheet_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sheet Name"
+        },
+        "table_id": {
+          "title": "Table Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "table_id",
+        "row_start",
+        "row_end",
+        "col_start",
+        "col_end"
+      ],
+      "title": "TableRegionSourceRef",
+      "type": "object"
+    },
+    "TextPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "code_language": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Code Language"
+        },
+        "heading_path": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Heading Path",
+          "type": "array"
+        },
+        "level": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Level"
+        },
+        "list_ordered": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "List Ordered"
+        },
+        "payload_type": {
+          "const": "text",
+          "default": "text",
+          "title": "Payload Type",
+          "type": "string"
+        }
+      },
+      "title": "TextPayload",
+      "type": "object"
+    },
+    "TextSpanSourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "end": {
+          "minimum": 0,
+          "title": "End",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "text_span",
+          "default": "text_span",
+          "title": "Kind",
+          "type": "string"
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Id"
+        },
+        "normalization_revision": {
+          "title": "Normalization Revision",
+          "type": "string"
+        },
+        "part": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Part"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "start": {
+          "description": "Unicode code point 偏移，0 基半开",
+          "minimum": 0,
+          "title": "Start",
+          "type": "integer"
+        },
+        "text_artifact_id": {
+          "title": "Text Artifact Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "text_artifact_id",
+        "start",
+        "end",
+        "normalization_revision"
+      ],
+      "title": "TextSpanSourceRef",
+      "type": "object"
+    },
+    "VideoFramePayload": {
+      "additionalProperties": false,
+      "properties": {
+        "end_ms": {
+          "minimum": 0,
+          "title": "End Ms",
+          "type": "integer"
+        },
+        "frame_artifact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Frame Artifact Id"
+        },
+        "payload_type": {
+          "const": "video_frame",
+          "default": "video_frame",
+          "title": "Payload Type",
+          "type": "string"
+        },
+        "start_ms": {
+          "minimum": 0,
+          "title": "Start Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "start_ms",
+        "end_ms"
+      ],
+      "title": "VideoFramePayload",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "blocks": {
+      "items": {
+        "$ref": "#/$defs/Block"
+      },
+      "title": "Blocks",
+      "type": "array"
+    },
+    "content_hash": {
+      "title": "Content Hash",
+      "type": "string"
+    },
+    "coverage": {
+      "$ref": "#/$defs/CoverageReport"
+    },
+    "dataset_id": {
+      "title": "Dataset Id",
+      "type": "string"
+    },
+    "doc_id": {
+      "title": "Doc Id",
+      "type": "string"
+    },
+    "effective_config_digest": {
+      "title": "Effective Config Digest",
+      "type": "string"
+    },
+    "langs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Langs",
+      "type": "array"
+    },
+    "pages": {
+      "items": {
+        "$ref": "#/$defs/PageGeometry"
+      },
+      "title": "Pages",
+      "type": "array"
+    },
+    "quality": {
+      "$ref": "#/$defs/QualityReport"
+    },
+    "schema_version": {
+      "const": "2.0",
+      "default": "2.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tenant_id": {
+      "title": "Tenant Id",
+      "type": "string"
+    },
+    "version_id": {
+      "title": "Version Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "doc_id",
+    "version_id",
+    "dataset_id",
+    "tenant_id",
+    "content_hash",
+    "effective_config_digest",
+    "blocks",
+    "coverage",
+    "quality"
+  ],
+  "title": "DocumentIR",
+  "type": "object"
+}
