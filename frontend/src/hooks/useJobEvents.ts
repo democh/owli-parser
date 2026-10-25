@@ -31,6 +31,8 @@ interface WsSnapshotMessage {
   type: 'snapshot';
   job: JobItem;
   latest_seq: number;
+  /** 截至 latest_seq 的历史事件：终态任务不会再有增量，必须靠快照补齐时间线。 */
+  events?: JobEventItem[];
 }
 
 interface WsEventMessage {
@@ -138,6 +140,7 @@ export function useJobEvents(jobId: string | null): {
           }
           if (payload.type === 'snapshot') {
             setJob(payload.job);
+            mergeEvents(payload.events ?? []);
             lastSeqRef.current = Math.max(lastSeqRef.current, payload.latest_seq);
             if (TERMINAL_STATES.includes(payload.job.state)) {
               closedByServer = true;

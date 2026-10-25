@@ -151,9 +151,15 @@ export function TaskDetailPage() {
     return <ErrorState message="任务不存在或暂时不可读取" />;
   }
 
-  const currentStageIndex = job.stage ? STAGES.indexOf(job.stage as (typeof STAGES)[number]) : -1;
   const isTerminal = TERMINAL.includes(job.state);
+  const succeeded = job.state === 'DONE' || job.state === 'PARTIAL_DONE';
   const failed = job.state === 'FAILED' || job.state === 'DEAD_LETTER';
+  // 终态任务的 stage 可能已推进到 DONE：成功完成视为全部阶段已到达，不靠猜测
+  const currentStageIndex = succeeded
+    ? STAGES.length - 1
+    : job.stage
+      ? STAGES.indexOf(job.stage as (typeof STAGES)[number])
+      : -1;
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">

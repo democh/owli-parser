@@ -200,6 +200,8 @@ def create_app(container: Container | None = None) -> FastAPI:
                 await session.execute(text("SELECT 1"))
         except Exception:
             return JSONResponse(status_code=503, content={"status": "db_unavailable"})
+        if not await live_container.check_retrieval_health():
+            return JSONResponse(status_code=503, content={"status": "retrieval_unavailable"})
         return JSONResponse(status_code=200, content={"status": "ok"})
 
     app.include_router(identity_router, prefix="/v1")

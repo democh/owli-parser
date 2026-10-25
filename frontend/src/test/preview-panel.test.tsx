@@ -71,14 +71,14 @@ describe('PreviewPanel 分支', () => {
   it('unsupported 走 L4 兜底信息卡（类型/大小/受权下载）', () => {
     render(
       <PreviewPanel
+        tenantId="t-1"
         descriptor={{ ...BASE, kind: 'unsupported', mime: null, filename: 'blob.bin' }}
         highlight={null}
       />,
     );
     expect(screen.getByTestId('preview-unsupported')).toBeInTheDocument();
     expect(screen.getByText(/blob\.bin/)).toBeInTheDocument();
-    const link = screen.getByRole('link', { name: /下载原件/ });
-    expect(link).toHaveAttribute('href', BASE.content_path);
+    expect(screen.getByRole('button', { name: /下载原件/ })).toBeInTheDocument();
   });
 
   it('text 分支经受权路径加载内容并展示', async () => {
@@ -86,24 +86,28 @@ describe('PreviewPanel 分支', () => {
       new Response('hello preview', { status: 200 }),
     );
     vi.stubGlobal('fetch', fetchMock);
-    render(<PreviewPanel descriptor={BASE} highlight={null} />);
+    render(<PreviewPanel tenantId="t-1" descriptor={BASE} highlight={null} />);
     await waitFor(() => expect(screen.getByText('hello preview')).toBeInTheDocument());
-    // 资源请求走同源凭据，不绕过服务端鉴权
+    // 资源请求走同源凭据 + 租户头，不绕过服务端鉴权
     expect(fetchMock).toHaveBeenCalledWith(BASE.content_path, {
       credentials: 'same-origin',
+      headers: { 'X-Tenant-ID': 't-1' },
     });
   });
 
   it('text 分支加载失败给出内联错误而非无穷 loading', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('no', { status: 403 })));
-    render(<PreviewPanel descriptor={BASE} highlight={null} />);
+    render(<PreviewPanel tenantId="t-1" descriptor={BASE} highlight={null} />);
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(screen.getByRole('alert').textContent).toContain('文本内容加载失败');
   });
 
   it('image 分支带 page_region 高亮层（百分比定位）', () => {
+    // 图片取值为异步 blob；高亮层不依赖像素尺寸，先挂起以避免竞态
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
     render(
       <PreviewPanel
+        tenantId="t-1"
         descriptor={{ ...BASE, kind: 'image', mime: 'image/png' }}
         highlight={{ pageIndex: 0, bbox: { x0: 0.2, y0: 0.3, x1: 0.7, y1: 0.6 } }}
       />,
@@ -114,8 +118,10 @@ describe('PreviewPanel 分支', () => {
   });
 
   it('image 高亮页不匹配时不渲染高亮层', () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
     render(
       <PreviewPanel
+        tenantId="t-1"
         descriptor={{ ...BASE, kind: 'image', mime: 'image/png' }}
         highlight={{ pageIndex: 3, bbox: { x0: 0.2, y0: 0.3, x1: 0.7, y1: 0.6 } }}
       />,
@@ -153,7 +159,7 @@ describe('预览 ↔ 块列表联动', () => {
   it('PdfPreview 翻页触发 onPageChange（含高亮驱动的页切换）', async () => {
     const onPageChange = vi.fn();
     const { rerender } = render(
-      <PreviewPanel descriptor={PDF_DESCRIPTOR} highlight={null} onPageChange={onPageChange} />,
+      <PreviewPanel tenantId="t-1" descriptor={PDF_DESCRIPTOR} highlight={null} onPageChange={onPageChange} />,
     );
     await waitFor(() => expect(onPageChange).toHaveBeenCalledWith(0));
 
@@ -166,6 +172,7 @@ describe('预览 ↔ 块列表联动', () => {
     // 高亮（来源锚点定位）驱动的页切换同样对外播报
     rerender(
       <PreviewPanel
+        tenantId="t-1"
         descriptor={PDF_DESCRIPTOR}
         highlight={{ pageIndex: 0 }}
         onPageChange={onPageChange}
@@ -302,6 +309,7 @@ describe('大文件预览保护', () => {
     vi.stubGlobal('fetch', fetchMock);
     render(
       <PreviewPanel
+        tenantId="t-1"
         descriptor={{ ...BASE, size_bytes: PREVIEW_AUTO_LOAD_LIMITS.text + 1 }}
         highlight={null}
       />,
@@ -315,8 +323,10 @@ describe('大文件预览保护', () => {
   });
 
   it('超限图片先展示确认，不创建 img 请求', () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
     render(
       <PreviewPanel
+        tenantId="t-1"
         descriptor={{
           ...BASE,
           kind: 'image',
@@ -336,6 +346,7 @@ describe('大文件预览保护', () => {
   it('超限 PDF 确认后才挂载渲染器', async () => {
     render(
       <PreviewPanel
+        tenantId="t-1"
         descriptor={{ ...PDF_DESCRIPTOR, size_bytes: PREVIEW_AUTO_LOAD_LIMITS.pdf + 1 }}
         highlight={null}
       />,

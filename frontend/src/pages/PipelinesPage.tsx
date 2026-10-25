@@ -290,7 +290,7 @@ export function PipelinesBoard({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{detail.name}</span>
-                  <StateBadge state={detail.active ? 'READY' : 'CANCELLED'} />
+                  <StateBadge state={detail.active ? 'READY' : 'DISABLED'} />
                   <span className="text-xs text-ink-muted tabular-nums">
                     v{detail.version} · {detail.source === 'tenant' ? '租户覆盖' : '内置'}
                   </span>

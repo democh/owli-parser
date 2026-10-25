@@ -2,7 +2,9 @@
  * PreviewPanel：文档预览器（PDF / 图片 / 文本 / L4 兜底）。
  *
  * - 预览 descriptor 由后端提供（能力事实源），前端只消费已安装 renderer。
- * - 资源统一走受权代理路径（同源 Cookie；服务端每次请求重新鉴权）。
+ * - 资源统一走受权代理路径（同源 Cookie + X-Tenant-ID；服务端每次请求重新鉴权）。
+ *   浏览器直接加载（<img>/pdf.js）无法补自定义头，因此图片/文本/下载一律先经
+ *   fetch 取值再落地为 blob，PDF 由 pdf.js 的 httpHeaders 携带同一请求头。
  * - bbox 高亮：page_region 的 0-1 归一化坐标直接映射为百分比定位，
  *   不依赖 canvas 像素尺寸（正确处理旋转/裁剪后的视觉方向坐标）。
  * - “可以预览”不代表“已解析/已索引”：状态由调用方分别展示。
@@ -83,52 +85,112 @@ export function bboxToPercent(bbox: PreviewBBox): {
 export function PreviewPanel({
   descriptor,
   highlight,
+  tenantId,
   onPageChange,
 }: {
   descriptor: PreviewDescriptor;
   highlight: PreviewHighlight | null;
+  /** 当前租户：受权代理路径要求 X-Tenant-ID（与 API client 同一口径）。 */
+  tenantId: string;
   /** 当前展示页变化回调（含高亮驱动与手动翻页）：用于与块列表联动。 */
   onPageChange?: (pageIndex: number) => void;
 }) {
   if (descriptor.kind === 'unsupported') {
-    return <UnsupportedCard descriptor={descriptor} />;
+    return <UnsupportedCard descriptor={descriptor} tenantId={tenantId} />;
   }
   if (descriptor.kind === 'text') {
     return (
-      <LargeFileGuard descriptor={descriptor} limit={PREVIEW_AUTO_LOAD_LIMITS.text}>
-        <TextPreview descriptor={descriptor} />
+      <LargeFileGuard descriptor={descriptor} tenantId={tenantId} limit={PREVIEW_AUTO_LOAD_LIMITS.text}>
+        <TextPreview descriptor={descriptor} tenantId={tenantId} />
       </LargeFileGuard>
     );
   }
   if (descriptor.kind === 'image') {
     return (
-      <LargeFileGuard descriptor={descriptor} limit={PREVIEW_AUTO_LOAD_LIMITS.image}>
-        <div className="relative">
-          <img
-            src={descriptor.content_path}
-            alt={descriptor.filename}
-            className="block max-h-[36rem] w-full object-contain"
-          />
-          {highlight && highlight.pageIndex === 0 && highlight.bbox && (
-            <HighlightBox bbox={highlight.bbox} />
-          )}
-        </div>
+      <LargeFileGuard descriptor={descriptor} tenantId={tenantId} limit={PREVIEW_AUTO_LOAD_LIMITS.image}>
+        <ImagePreview descriptor={descriptor} tenantId={tenantId} highlight={highlight} />
       </LargeFileGuard>
     );
   }
   return (
-    <LargeFileGuard descriptor={descriptor} limit={PREVIEW_AUTO_LOAD_LIMITS.pdf}>
-      <PdfPreview descriptor={descriptor} highlight={highlight} onPageChange={onPageChange} />
+    <LargeFileGuard descriptor={descriptor} tenantId={tenantId} limit={PREVIEW_AUTO_LOAD_LIMITS.pdf}>
+      <PdfPreview
+        descriptor={descriptor}
+        tenantId={tenantId}
+        highlight={highlight}
+        onPageChange={onPageChange}
+      />
     </LargeFileGuard>
+  );
+}
+
+/** 受权资源读取：同源 Cookie + 租户头，非 2xx 一律抛错（调用方给内联提示，不假装成功）。 */
+export async function fetchPreviewResource(url: string, tenantId: string): Promise<Response> {
+  const response = await fetch(url, {
+    credentials: 'same-origin',
+    headers: tenantId ? { 'X-Tenant-ID': tenantId } : undefined,
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  return response;
+}
+
+/** 受权下载：浏览器 <a download> 同样无法带租户头，改为取值后本地生成链接。 */
+function AuthorizedDownload({
+  descriptor,
+  tenantId,
+  className,
+  children,
+}: {
+  descriptor: PreviewDescriptor;
+  tenantId: string;
+  className: string;
+  children: ReactNode;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  async function handleDownload(): Promise<void> {
+    setBusy(true);
+    setFailed(false);
+    try {
+      const response = await fetchPreviewResource(descriptor.content_path, tenantId);
+      const blobUrl = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement('a');
+      anchor.href = blobUrl;
+      anchor.download = descriptor.filename;
+      anchor.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <button type="button" onClick={() => void handleDownload()} disabled={busy} className={className}>
+        {children}
+      </button>
+      {failed && (
+        <p role="alert" className="text-xs text-state-danger">
+          下载失败（可能权限已变化或连接中断）
+        </p>
+      )}
+    </div>
   );
 }
 
 function LargeFileGuard({
   descriptor,
+  tenantId,
   limit,
   children,
 }: {
   descriptor: PreviewDescriptor;
+  tenantId: string;
   limit: number;
   children: ReactNode;
 }) {
@@ -152,13 +214,13 @@ function LargeFileGuard({
         >
           仍要加载预览
         </button>
-        <a
-          href={descriptor.content_path}
-          download={descriptor.filename}
+        <AuthorizedDownload
+          descriptor={descriptor}
+          tenantId={tenantId}
           className="rounded-btn border border-surface-border px-3 py-1.5 text-xs hover:bg-surface-muted"
         >
           下载原件（受权）
-        </a>
+        </AuthorizedDownload>
       </div>
     </div>
   );
@@ -175,7 +237,13 @@ function HighlightBox({ bbox }: { bbox: PreviewBBox }) {
   );
 }
 
-function UnsupportedCard({ descriptor }: { descriptor: PreviewDescriptor }) {
+function UnsupportedCard({
+  descriptor,
+  tenantId,
+}: {
+  descriptor: PreviewDescriptor;
+  tenantId: string;
+}) {
   return (
     <div className="space-y-2 p-4 text-sm" data-testid="preview-unsupported">
       <p className="text-ink">该类型未启用预览渲染器，提供文件级兜底信息。</p>
@@ -185,18 +253,74 @@ function UnsupportedCard({ descriptor }: { descriptor: PreviewDescriptor }) {
         <li>大小：{descriptor.size_bytes} 字节</li>
         <li>artifact：{descriptor.artifact_id.slice(0, 8)}</li>
       </ul>
-      <a
-        href={descriptor.content_path}
-        className="inline-block rounded-btn border border-surface-border px-3 py-1.5 text-xs hover:bg-surface-muted"
-        download={descriptor.filename}
+      <AuthorizedDownload
+        descriptor={descriptor}
+        tenantId={tenantId}
+        className="rounded-btn border border-surface-border px-3 py-1.5 text-xs hover:bg-surface-muted"
       >
         下载原件（受权）
-      </a>
+      </AuthorizedDownload>
     </div>
   );
 }
 
-function TextPreview({ descriptor }: { descriptor: PreviewDescriptor }) {
+function ImagePreview({
+  descriptor,
+  tenantId,
+  highlight,
+}: {
+  descriptor: PreviewDescriptor;
+  tenantId: string;
+  highlight: PreviewHighlight | null;
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    async function load(): Promise<void> {
+      try {
+        const response = await fetchPreviewResource(descriptor.content_path, tenantId);
+        objectUrl = URL.createObjectURL(await response.blob());
+        if (!cancelled) setSrc(objectUrl);
+      } catch {
+        if (!cancelled) setError('图片内容加载失败（可能权限已变化或连接中断）');
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+      if (objectUrl !== null) URL.revokeObjectURL(objectUrl);
+    };
+  }, [descriptor.content_path, tenantId]);
+
+  return (
+    <div className="relative">
+      <img
+        src={src ?? undefined}
+        alt={descriptor.filename}
+        className="block max-h-[36rem] w-full object-contain"
+      />
+      {highlight && highlight.pageIndex === 0 && highlight.bbox && (
+        <HighlightBox bbox={highlight.bbox} />
+      )}
+      {error && (
+        <p role="alert" className="p-4 text-sm text-state-danger">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function TextPreview({
+  descriptor,
+  tenantId,
+}: {
+  descriptor: PreviewDescriptor;
+  tenantId: string;
+}) {
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -204,12 +328,7 @@ function TextPreview({ descriptor }: { descriptor: PreviewDescriptor }) {
     let cancelled = false;
     async function load(): Promise<void> {
       try {
-        const response = await fetch(descriptor.content_path, {
-          credentials: 'same-origin',
-        });
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
-        }
+        const response = await fetchPreviewResource(descriptor.content_path, tenantId);
         const body = await response.text();
         if (!cancelled) {
           // 交互端限制展示体积；完整内容仍可经受权导出获取
@@ -223,7 +342,7 @@ function TextPreview({ descriptor }: { descriptor: PreviewDescriptor }) {
     return () => {
       cancelled = true;
     };
-  }, [descriptor.content_path]);
+  }, [descriptor.content_path, tenantId]);
 
   if (error) {
     return (
@@ -248,10 +367,12 @@ function TextPreview({ descriptor }: { descriptor: PreviewDescriptor }) {
 
 function PdfPreview({
   descriptor,
+  tenantId,
   highlight,
   onPageChange,
 }: {
   descriptor: PreviewDescriptor;
+  tenantId: string;
   highlight: PreviewHighlight | null;
   onPageChange?: (pageIndex: number) => void;
 }) {
@@ -297,6 +418,8 @@ function PdfPreview({
           pdf = (await pdfjs.getDocument({
             url: descriptor.content_path,
             withCredentials: true,
+            // 受权代理要求租户头：pdf.js 支持为文档请求附加自定义头
+            httpHeaders: tenantId ? { 'X-Tenant-ID': tenantId } : undefined,
           }).promise) as unknown as { numPages: number; getPage: (n: number) => Promise<unknown> };
           docRef.current = pdf;
           if (!cancelled) setPageCount(pdf.numPages);
@@ -331,7 +454,7 @@ function PdfPreview({
     return () => {
       cancelled = true;
     };
-  }, [descriptor.content_path, currentPage]);
+  }, [descriptor.content_path, tenantId, currentPage]);
 
   if (error) {
     return (
@@ -339,13 +462,13 @@ function PdfPreview({
         <p role="alert" className="text-state-danger">
           {error}
         </p>
-        <a
-          href={descriptor.content_path}
-          className="inline-block rounded-btn border border-surface-border px-3 py-1.5 text-xs hover:bg-surface-muted"
-          download={descriptor.filename}
+        <AuthorizedDownload
+          descriptor={descriptor}
+          tenantId={tenantId}
+          className="rounded-btn border border-surface-border px-3 py-1.5 text-xs hover:bg-surface-muted"
         >
           下载原件（受权）
-        </a>
+        </AuthorizedDownload>
       </div>
     );
   }

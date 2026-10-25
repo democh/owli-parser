@@ -7,12 +7,13 @@
   revision 漂移时确认被拒（任务失败，安全方向优先）；
 - dense 通道需要 embedding 用途绑定（M3 模型配置）；未绑定时不进入必需集合，
   配置显式要求 dense 而未绑定时直接报 capability_not_ready，不静默降级；
-- 内存索引仅同进程可见（开发/测试）；生产由真实引擎 adapter 承接（M3），
-  端口语义以同一 contract suite 验收。
+- 内存索引仅同进程可见（开发/测试）；生产由 Qdrant/OpenSearch adapter 承接，
+  同步 HTTP 调用一律经线程池，避免阻塞 API/worker 事件循环。
 """
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, replace
@@ -99,7 +100,8 @@ class IndexPublicationService:
         for index in (self._dense, self._lexical):
             if index is None:
                 continue
-            deleted += index.delete_by_generation(
+            deleted += await asyncio.to_thread(
+                index.delete_by_generation,
                 tenant_id=str(tenant_id),
                 version_id=str(version_id),
                 before_generation=target_generation,
@@ -172,17 +174,21 @@ class IndexPublicationService:
             if index is None:  # required_channels 已校验；运行时防御（assert 会被 -O 剥离）
                 raise CapabilityNotReadyError(f"{channel} 索引写入器未装配")
             # 旧代清理：过期写入不得覆盖新代（端口契约）
-            index.delete_by_generation(
-                tenant_id=str(tenant_id), version_id=str(version_id), before_generation=generation
+            await asyncio.to_thread(
+                index.delete_by_generation,
+                tenant_id=str(tenant_id),
+                version_id=str(version_id),
+                before_generation=generation,
             )
             if channel == "dense":
                 if vectors is None:  # 同上：防御性检查
                     raise CapabilityNotReadyError("dense 通道缺少向量")
-                index.upsert(
-                    [replace(doc, vector=list(vec)) for doc, vec in zip(documents, vectors, strict=True)]
+                await asyncio.to_thread(
+                    index.upsert,
+                    [replace(doc, vector=list(vec)) for doc, vec in zip(documents, vectors, strict=True)],
                 )
             else:
-                index.upsert(documents)
+                await asyncio.to_thread(index.upsert, documents)
             # 清单确认：digest 与冻结 expected 集一致才允许（并发 revision 漂移 → 拒绝）
             await self._knowledge.acknowledge_channel(
                 manifest.id,
@@ -261,9 +267,9 @@ class IndexPublicationService:
                 if provider is None:
                     raise CapabilityNotReadyError("dense 通道缺少 embedding 提供者")
                 vector = list((await provider([document.text]))[0])
-                self._dense.upsert([replace(document, vector=vector)])
+                await asyncio.to_thread(self._dense.upsert, [replace(document, vector=vector)])
             else:
-                self._lexical.upsert([document])
+                await asyncio.to_thread(self._lexical.upsert, [document])
         # 重建成功后：同 chunk 的 pending 行动全部完成（自动/手动路径共用）
         resolved = await self._knowledge.resolve_index_actions_for_chunk(
             tenant_id=tenant_id, chunk_id=chunk_id

@@ -399,6 +399,7 @@ export function WorkbenchPage() {
                 <PreviewPanel
                   descriptor={previewQuery.data}
                   highlight={highlight}
+                  tenantId={tenantId ?? ''}
                   onPageChange={handlePageChange}
                 />
               </div>

@@ -133,6 +133,24 @@ chunk:
 
 retrieval:
   enabled: false # retrieval profile 启用后为 true
+  # memory 仅供开发/测试；生产必须显式切换真实引擎（索引需跨进程共享）。
+  dense_backend: memory # memory | qdrant
+  lexical_backend: memory # memory | opensearch
+  qdrant:
+    url: http://127.0.0.1:6333
+    collection: owli_chunks
+    api_key_ref: null # 例：env:OWLI_QDRANT_API_KEY
+    timeout_seconds: 10
+    verify_tls: true
+  opensearch:
+    url: http://127.0.0.1:9200
+    index: owli_chunks
+    username_ref: null
+    password_ref: null
+    api_key_ref: null
+    timeout_seconds: 10
+    verify_tls: true
+    refresh_on_write: true # 发布后立即可搜；高吞吐场景可显式关闭并延后刷新
   per_channel_limit: 50
   candidate_limit: 100
   top_k: 10

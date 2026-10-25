@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { ApiError, request, type LoginResponse, type TenantEntry } from '../api/client';
 import { useSessionStore } from '../stores/session';
 
@@ -12,6 +12,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const setSession = useSessionStore((s) => s.setSession);
+  const user = useSessionStore((s) => s.user);
 
   const login = useMutation({
     mutationFn: async (form: LoginForm) => {
@@ -28,6 +29,11 @@ export function LoginPage() {
       navigate('/datasets', { replace: true });
     },
   });
+
+  if (user) {
+    // 已恢复会话时直接回到工作台，不重复登录
+    return <Navigate to="/datasets" replace />;
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-surface-muted p-4">

@@ -195,8 +195,40 @@ class ChunkSection(_StrictModel):
         return self
 
 
+class QdrantSection(_StrictModel):
+    url: str = "http://127.0.0.1:6333"
+    collection: str = "owli_chunks"
+    api_key_ref: str | None = None
+    timeout_seconds: float = Field(default=10, gt=0)
+    verify_tls: bool = True
+
+
+class OpenSearchSection(_StrictModel):
+    url: str = "http://127.0.0.1:9200"
+    index: str = "owli_chunks"
+    username_ref: str | None = None
+    password_ref: str | None = None
+    api_key_ref: str | None = None
+    timeout_seconds: float = Field(default=10, gt=0)
+    verify_tls: bool = True
+    refresh_on_write: bool = True
+
+    @model_validator(mode="after")
+    def _check_auth(self) -> OpenSearchSection:
+        if self.api_key_ref and (self.username_ref or self.password_ref):
+            raise ValueError("OpenSearch api_key 与 username/password 不得同时配置")
+        if bool(self.username_ref) != bool(self.password_ref):
+            raise ValueError("OpenSearch username_ref 与 password_ref 必须成对配置")
+        return self
+
+
 class RetrievalSection(_StrictModel):
     enabled: bool = False
+    # memory 仅供开发/测试；生产必须显式切换到真实引擎，避免多进程索引不共享。
+    dense_backend: Literal["memory", "qdrant"] = "memory"
+    lexical_backend: Literal["memory", "opensearch"] = "memory"
+    qdrant: QdrantSection = Field(default_factory=QdrantSection)
+    opensearch: OpenSearchSection = Field(default_factory=OpenSearchSection)
     # 索引写入端启用的通道：lexical（BM25，无模型依赖）默认可用；
     # dense 需要 embedding 用途绑定（M3 模型配置）后才可加入，
     # 配置要求 dense 但未绑定时任务显式失败，不静默降级。
@@ -420,4 +452,9 @@ def validate_config(settings: AppSettings) -> list[str]:
         warnings.append("未配置 local 存储 root，本地存储 profile 将在首次使用时失败")
     if settings.retrieval.enabled is False:
         warnings.append("retrieval profile 未启用，检索相关接口将返回 capability 不可用")
+    elif settings.app.environment == "production":
+        if settings.retrieval.dense_backend == "memory":
+            warnings.append("生产环境 dense 仍为 memory：索引不跨进程共享，需切换为 qdrant")
+        if settings.retrieval.lexical_backend == "memory":
+            warnings.append("生产环境 lexical 仍为 memory：索引不跨进程共享，需切换为 opensearch")
     return warnings

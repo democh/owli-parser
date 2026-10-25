@@ -37,6 +37,8 @@ def hit_payload(doc: IndexDocument) -> dict[str, object]:
         "chunk_revision": doc.chunk_revision,
         "version_id": doc.version_id,
         "dataset_id": doc.dataset_id,
+        "tenant_id": doc.tenant_id,
+        "acl_ref": doc.acl_ref,
         "index_generation": doc.index_generation,
         **doc.payload,
     }

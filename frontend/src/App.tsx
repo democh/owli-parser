@@ -20,6 +20,11 @@ import { useSessionStore } from './stores/session';
 
 function RequireSession({ children }: { children: React.ReactNode }) {
   const user = useSessionStore((s) => s.user);
+  const initialized = useSessionStore((s) => s.initialized);
+  // 会话恢复中不被视为未登录：否则刷新/直达链接会先跳登录页
+  if (!initialized) {
+    return <p className="p-6 text-sm text-ink-muted">正在恢复会话…</p>;
+  }
   if (!user) {
     return <Navigate to="/login" replace />;
   }
@@ -40,6 +45,7 @@ function RequireTenantAdmin({ children }: { children: React.ReactNode }) {
 function SessionBootstrap() {
   const setSession = useSessionStore((s) => s.setSession);
   const setTenants = useSessionStore((s) => s.setTenants);
+  const markInitialized = useSessionStore((s) => s.markInitialized);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -63,13 +69,16 @@ function SessionBootstrap() {
         }
       } catch {
         // 未登录：保持空会话，由路由守卫跳转
+      } finally {
+        // 成功或失败都结束“恢复中”，避免一直卡在占位态
+        if (!cancelled) markInitialized();
       }
     }
     void bootstrap();
     return () => {
       cancelled = true;
     };
-  }, [setSession, setTenants]);
+  }, [setSession, setTenants, markInitialized]);
 
   return null;
 }

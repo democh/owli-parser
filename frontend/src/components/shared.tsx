@@ -18,6 +18,7 @@ const STATE_STYLES: Record<string, string> = {
   CANCELLED: 'bg-surface-muted text-ink-muted',
   SUBMITTED: 'bg-surface-muted text-state-ok',
   READY: 'bg-surface-muted text-state-ok',
+  DISABLED: 'bg-surface-muted text-ink-muted',
   FETCHING: 'bg-brand-soft text-brand',
 };
 

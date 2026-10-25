@@ -1,0 +1,54 @@
+# 本地检索联调覆盖：Qdrant + OpenSearch（仅内部网络，不暴露宿主端口）。
+# 仅用于功能/契约验收；生产应使用受 TLS、认证、备份与监控保护的外部集群。
+#
+#   docker compose -f deploy/compose.yaml -f deploy/compose.retrieval-dev.yaml \
+#     --profile retrieval up -d
+name: owli-parser
+
+x-retrieval-env: &retrieval-env
+  OWLI_RETRIEVAL__ENABLED: "true"
+  OWLI_RETRIEVAL__DENSE_BACKEND: qdrant
+  OWLI_RETRIEVAL__LEXICAL_BACKEND: opensearch
+  OWLI_RETRIEVAL__QDRANT__URL: http://qdrant:6333
+  OWLI_RETRIEVAL__OPENSEARCH__URL: http://opensearch:9200
+  OWLI_RETRIEVAL__OPENSEARCH__REFRESH_ON_WRITE: "true"
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    volumes:
+      - qdrantdata:/qdrant/storage
+    profiles: [retrieval]
+
+  opensearch:
+    image: opensearchproject/opensearch:2.18.0
+    environment:
+      discovery.type: single-node
+      # 本覆盖仅用于本地联调；生产必须启用 security plugin 与 TLS。
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - opensearchdata:/usr/share/opensearch/data
+    profiles: [retrieval]
+
+  api:
+    environment: *retrieval-env
+    depends_on:
+      qdrant:
+        condition: service_started
+      opensearch:
+        condition: service_started
+
+  worker:
+    environment: *retrieval-env
+
+  scheduler:
+    environment: *retrieval-env
+
+volumes:
+  qdrantdata: {}
+  opensearchdata: {}

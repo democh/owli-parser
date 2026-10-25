@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid as uuid_module
 from collections.abc import Sequence
 from pathlib import Path
@@ -42,6 +43,7 @@ from owli_parser.modules.knowledge.service import KnowledgeService
 from owli_parser.modules.retention.service import RetentionService
 from owli_parser.modules.retrieval.indexing import IndexPublicationService
 from owli_parser.modules.retrieval.service import RetrievalService
+from owli_parser.ports.retrieval import DenseIndex, LexicalIndex
 from owli_parser.ports.secrets import EnvSecretResolver, SecretResolver
 from owli_parser.workflows.download_import import DownloadImportWorkflow
 from owli_parser.workflows.run_parsing_job import RunParsingJobWorkflow
@@ -87,11 +89,8 @@ class Container:
         )
         self.jobs = JobService(self.uow, self.clock, lease_seconds=self.settings.jobs.lease_seconds)
         self.knowledge = KnowledgeService(self.uow, self.clock, self.settings.chunk, outbox=self.outbox)
-        # 检索：M1 使用内存索引锁定端口语义；M3 接入 Qdrant/OpenSearch adapter。
-        # 注意：内存索引不跨进程共享（无写入端、仅测试/开发使用），
-        # 真实通道在 M3 通过索引发布清单（index_manifests）驱动写入。
-        self.dense_index = InMemoryDenseIndex()
-        self.lexical_index = InMemoryLexicalIndex()
+        # 检索索引按集中配置装配：memory 仅开发/测试，生产使用 Qdrant/OpenSearch。
+        self.dense_index, self.lexical_index = self._build_retrieval_indexes()
         self.retrieval = RetrievalService(
             self.settings.retrieval,
             dense_index=self.dense_index,
@@ -213,6 +212,61 @@ class Container:
             self.outbox,
             self.secrets,
         )
+
+    def _build_retrieval_indexes(self) -> tuple[DenseIndex | None, LexicalIndex | None]:
+        """按配置装配真实索引；关闭检索时保留内存实现以支持离线测试。"""
+        settings = self.settings.retrieval
+        if not settings.enabled:
+            return InMemoryDenseIndex(), InMemoryLexicalIndex()
+
+        dense: DenseIndex | None
+        if settings.dense_backend == "qdrant":
+            from owli_parser.adapters.retrieval.qdrant import QdrantDenseIndex
+
+            api_key = (
+                self.secrets.resolve(settings.qdrant.api_key_ref) if settings.qdrant.api_key_ref else None
+            )
+            dense = QdrantDenseIndex(
+                url=settings.qdrant.url,
+                collection=settings.qdrant.collection,
+                api_key=api_key,
+                timeout_seconds=settings.qdrant.timeout_seconds,
+                verify_tls=settings.qdrant.verify_tls,
+            )
+        else:
+            dense = InMemoryDenseIndex()
+
+        lexical: LexicalIndex | None
+        if settings.lexical_backend == "opensearch":
+            from owli_parser.adapters.retrieval.opensearch import OpenSearchLexicalIndex
+
+            os_settings = settings.opensearch
+            username = self.secrets.resolve(os_settings.username_ref) if os_settings.username_ref else None
+            password = self.secrets.resolve(os_settings.password_ref) if os_settings.password_ref else None
+            api_key = self.secrets.resolve(os_settings.api_key_ref) if os_settings.api_key_ref else None
+            lexical = OpenSearchLexicalIndex(
+                url=os_settings.url,
+                index=os_settings.index,
+                username=username,
+                password=password,
+                api_key=api_key,
+                timeout_seconds=os_settings.timeout_seconds,
+                verify_tls=os_settings.verify_tls,
+                refresh_on_write=os_settings.refresh_on_write,
+            )
+        else:
+            lexical = InMemoryLexicalIndex()
+        return dense, lexical
+
+    async def check_retrieval_health(self) -> bool:
+        """就绪探针：真实检索适配器有心跳方法时必须可用；内存实现不探测。"""
+        if not self.settings.retrieval.enabled:
+            return True
+        for index in (self.dense_index, self.lexical_index):
+            probe = getattr(index, "check_health", None)
+            if callable(probe) and not await asyncio.to_thread(probe):
+                return False
+        return True
 
     def _resolve_temp_root(self) -> Path:
         roots = self.settings.storage.local.roots
@@ -408,4 +462,8 @@ class Container:
         if self._model_http is not None:
             await self._model_http.aclose()
             self._model_http = None
+        for index in (self.dense_index, self.lexical_index):
+            close = getattr(index, "close", None)
+            if callable(close):
+                close()
         await self.engine.dispose()

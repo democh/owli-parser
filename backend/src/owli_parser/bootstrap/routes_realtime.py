@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict
 
 from owli_parser.bootstrap.dependencies import ActorState, get_container, resolve_actor
 from owli_parser.core.errors import AppError, InvalidInputError
-from owli_parser.modules.jobs.service import JobInfo
+from owli_parser.modules.jobs.service import JobEventInfo, JobInfo
 
 router = APIRouter(tags=["realtime"])
 
@@ -73,7 +73,8 @@ async def ws_job_events(websocket: WebSocket, job_id: uuid.UUID) -> None:
 
     await websocket.accept()
     try:
-        # 快照 + 起点 seq：快照之后只推增量（客户端按 seq 去重）
+        # 快照 + 起点 seq：快照包含截至 latest_seq 的历史事件，之后只推增量
+        # （客户端按 seq 去重）。只给 latest_seq 会让终态任务的历史时间线永远为空。
         events, latest_seq = await container.jobs.list_events(
             claims.tenant_id, job_id, after_seq=0, limit=_SNAPSHOT_EVENT_LIMIT
         )
@@ -82,6 +83,7 @@ async def ws_job_events(websocket: WebSocket, job_id: uuid.UUID) -> None:
                 "type": "snapshot",
                 "job": _job_payload(job),
                 "latest_seq": latest_seq,
+                "events": [_event_payload(event) for event in events],
                 "truncated": len(events) >= _SNAPSHOT_EVENT_LIMIT,
             }
         )
@@ -99,20 +101,7 @@ async def ws_job_events(websocket: WebSocket, job_id: uuid.UUID) -> None:
                 claims.tenant_id, job_id, after_seq=after_seq
             )
             for event in events:
-                await websocket.send_json(
-                    {
-                        "type": "event",
-                        "event": {
-                            "seq": event.seq,
-                            "type": event.event_type,
-                            "attempt": event.attempt,
-                            "from_state": event.from_state,
-                            "to_state": event.to_state,
-                            "ts": event.ts.isoformat(),
-                            "detail": event.detail,
-                        },
-                    }
-                )
+                await websocket.send_json({"type": "event", "event": _event_payload(event)})
             if events:
                 after_seq = events[-1].seq
             ticks += 1
@@ -129,6 +118,18 @@ async def ws_job_events(websocket: WebSocket, job_id: uuid.UUID) -> None:
                     return
     except WebSocketDisconnect:
         return
+
+
+def _event_payload(event: JobEventInfo) -> dict[str, object]:
+    return {
+        "seq": event.seq,
+        "type": event.event_type,
+        "attempt": event.attempt,
+        "from_state": event.from_state,
+        "to_state": event.to_state,
+        "ts": event.ts.isoformat(),
+        "detail": event.detail,
+    }
 
 
 def _job_payload(job: JobInfo) -> dict[str, object]:

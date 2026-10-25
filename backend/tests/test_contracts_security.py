@@ -194,6 +194,41 @@ class TestSettings:
         with pytest.raises(ConfigInvalidError):
             load_boot_settings(network={"mode": "offline", "proxy_url": "http://proxy.local:3128"})
 
+    def test_retrieval_backends_and_auth_are_validated(self) -> None:
+        settings = load_boot_settings(
+            retrieval={
+                "enabled": True,
+                "dense_backend": "qdrant",
+                "lexical_backend": "opensearch",
+                "qdrant": {"url": "http://qdrant:6333", "collection": "knowledge"},
+                "opensearch": {
+                    "url": "https://search:9200",
+                    "index": "knowledge",
+                    "username_ref": "env:OS_USER",
+                    "password_ref": "env:OS_PASSWORD",
+                },
+            }
+        )
+        assert settings.retrieval.dense_backend == "qdrant"
+        assert settings.retrieval.opensearch.index == "knowledge"
+
+        with pytest.raises(ConfigInvalidError):
+            load_boot_settings(retrieval={"dense_backend": "unknown"})
+        with pytest.raises(ConfigInvalidError):
+            load_boot_settings(
+                retrieval={"opensearch": {"username_ref": "env:OS_USER", "password_ref": None}}
+            )
+        with pytest.raises(ConfigInvalidError):
+            load_boot_settings(
+                retrieval={
+                    "opensearch": {
+                        "api_key_ref": "env:OS_KEY",
+                        "username_ref": "env:OS_USER",
+                        "password_ref": "env:OS_PASSWORD",
+                    }
+                }
+            )
+
 
 class TestFetchPolicy:
     def test_reject_userinfo_and_schemes(self) -> None:

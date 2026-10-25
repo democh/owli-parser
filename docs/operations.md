@@ -128,7 +128,7 @@ scripts/ops_drill.sh restore-drill ./backups/<UTC> owli_drill_20261017
 | `OwliTokenRejection*` | `reason=invalid/disabled` | 轮换泄漏凭据、停用应用残留客户端 |
 | `OwliDiskLow/Critical` | artifacts 卷、PG 数据卷 | 扩容/清理；先降 `retention.deleted_document_retention_days` 前需评估合规 |
 | `owli_retention_errors_total` 增长 | scheduler 日志 | 索引/对象删除失败会在下一轮重试；持续失败查存储权限与索引引擎 |
-| 检索不可用 | `/readyz`、引擎健康 | 返回“索引暂不可查询”，不回落旧结果；恢复后按 manifest 重发 |
+| 检索不可用 | `/readyz`、Qdrant `/healthz`、OpenSearch `_cluster/health` | `/readyz` 返回 `retrieval_unavailable`；单通道故障时检索显式降级并告警，不回落旧结果；恢复后按 manifest 重发 |
 | 问答 `capability_not_ready` | 模型绑定/档案/连接 | 检查 generation 绑定与凭据；budget 超限见 `budget_exceeded` |
 | `GET /v1/adapters/health` 为 `degraded/unavailable` | `stale` 列表 | 检查对应外部 adapter 进程与心跳任务；恢复上报后自动回到 ready |
 
@@ -151,7 +151,10 @@ scripts/ops_drill.sh restore-drill ./backups/<UTC> owli_drill_20261017
 | `jobs.stage_deadline_seconds` | 单阶段上限 | 与 P95 告警阈值联动 |
 | `jobs.outbox_poll_seconds/batch_size` | 派发吞吐 | 积压时先加 batch，再查 broker |
 | `retention.deleted_document_retention_days` | 软删保留 | 合规优先；GC 按 `gc_interval_seconds` 限频 |
-| `retrieval.channels` | dense/lexical | 真实引擎接入后按 Recall/nDCG 基线调整 |
+| `retrieval.channels` | dense/lexical | 按 Recall/nDCG 基线调整；dense 依赖 embedding 绑定 |
+| `retrieval.dense_backend` | `memory/qdrant` | 生产必须为 qdrant；memory 不跨进程共享 |
+| `retrieval.lexical_backend` | `memory/opensearch` | 生产必须为 opensearch；memory 不跨进程共享 |
+| `retrieval.opensearch.refresh_on_write` | 发布后立即可搜 | 高吞吐场景可关闭并接受短时可见延迟 |
 | `chunk.target_tokens/max_tokens` | 分块 | 变更需重建索引并按 A/B 实验验证 |
 | `parsing.adapter_heartbeat_ttl_seconds` | 外部 adapter 失联判定 | 与心跳间隔联动（建议 ≥ 3 个上报周期） |
 
